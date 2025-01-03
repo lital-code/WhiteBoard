@@ -10,33 +10,39 @@ class WhiteboardServer:
         print(f"Server listening on {host}:{port}")
 
     def broadcast(self, data, sender_socket):
+        """Send drawing data to all clients except the sender."""
         for client in self.clients:
             if client != sender_socket:
                 try:
+                    print(f"Broadcasting: {data.decode()} to client {client.getpeername()}")  # Debug log
                     client.sendall(data)
-                except:
+                except Exception as e:
+                    print(f"Error sending data to client {client.getpeername()}: {e}")
                     self.clients.remove(client)
 
     def handle_client(self, client_socket):
+        """Handle communication with a single client."""
+        self.clients.append(client_socket)
         while True:
             try:
                 data = client_socket.recv(1024)
-                print(data)
                 if data:
+                    print(f"Received from client {client_socket.getpeername()}: {data.decode()}")  # Debug log
                     self.broadcast(data, client_socket)
                 else:
                     break
-            except:
+            except Exception as e:
+                print(f"Error handling client {client_socket.getpeername()}: {e}")
                 break
         client_socket.close()
         self.clients.remove(client_socket)
 
     def start(self):
+        """Accept new clients and start a thread for each."""
         while True:
             client_socket, _ = self.server_socket.accept()
-            print("New connection established.")
-            self.clients.append(client_socket)
-            threading.Thread(target=self.handle_client, args=(client_socket,)).start()
+            print(f"New client connected: {client_socket.getpeername()}")
+            threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
 
 if __name__ == "__main__":
     server = WhiteboardServer()
