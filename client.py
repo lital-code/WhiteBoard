@@ -5,11 +5,29 @@ from re import match
 
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor
-from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, QColorDialog, QHBoxLayout
+from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, \
+    QColorDialog, QHBoxLayout, QDialog, QDialogButtonBox, QRadioButton
 import random
 
 SPRAY_PARTICLES = 100
 SPRAY_DIAMETER = 10
+
+class CustomDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("HELLO!")
+
+        lineBrush = QRadioButton("line type")
+        spray_brush = QRadioButton("spray")
+
+        layout = QVBoxLayout()
+        message = QLabel("Something happened, is that OK?")
+        layout.addWidget(message)
+
+        layout.addWidget(lineBrush)
+        layout.addWidget(spray_brush)
+
+        self.setLayout(layout)
 
 class WhiteboardClient(QMainWindow):
     def __init__(self, host="127.0.0.1", port=12345):
@@ -53,9 +71,9 @@ class WhiteboardClient(QMainWindow):
         self.mode="line"
 
         # test button
-        self.spray_button = QPushButton("Brushes")
-        self.spray_button.clicked.connect(self.spray)
-        self.button_layout.addWidget(self.spray_button)
+        self.brushes_button = QPushButton("Brushes")
+        self.brushes_button.clicked.connect(self.open_brushes_dialog)
+        self.button_layout.addWidget(self.brushes_button)
 
         # Initial canvas size
         self.canvas_width = 1920
@@ -194,6 +212,11 @@ class WhiteboardClient(QMainWindow):
         scale_y = self.canvas.height() / self.height()
         return QPoint(int(point.x() * scale_x), int(point.y() * scale_y))
 
+    def open_brushes_dialog(self):
+        dlg = CustomDialog()
+        dlg.exec()
+
+
 
 
 
@@ -203,3 +226,5 @@ if __name__ == "__main__":
     client = WhiteboardClient()
     client.show()
     sys.exit(app.exec())
+
+
