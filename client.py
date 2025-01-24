@@ -15,13 +15,18 @@ SPRAY_DIAMETER = 10
 class CustomDialog(QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("HELLO!")
+        self.setWindowTitle("Brushes")
 
-        lineBrush = QRadioButton("line type")
+        lineBrush = QRadioButton("solid line")
+        if(lineBrush.clicked()):
+            self.mode = "line"
+        #lineBrush.clicked(self.line)
         spray_brush = QRadioButton("spray")
+        if(spray_brush.clicked()):
+            self.mode = "spray"
 
         layout = QVBoxLayout()
-        message = QLabel("Something happened, is that OK?")
+        message = QLabel("Choose your brush type")
         layout.addWidget(message)
 
         layout.addWidget(lineBrush)
@@ -68,7 +73,11 @@ class WhiteboardClient(QMainWindow):
         self.button_layout.addWidget(self.color_button)
 
         #set default mode to line
-        self.mode="line"
+
+        self.mode = "line"
+
+        # def spray():
+        #     self.mode = "spray"
 
         # test button
         self.brushes_button = QPushButton("Brushes")
@@ -124,7 +133,7 @@ class WhiteboardClient(QMainWindow):
             current_point = (event.position())
 
             if self.mode == "line":
-                # Draw on the local canvas
+                # Draw on the local canvas*
                 self.draw_line(self.last_point, current_point, self.pen_color)
 
             elif self.mode == "spray":
@@ -182,8 +191,8 @@ class WhiteboardClient(QMainWindow):
     def draw_line(self, start, end, color):
         """Draw a line on the local canvas."""
         painter = QPainter(self.pixmap)
-        pen = QPen(color, 5, Qt.PenStyle.DashLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-        pen.setDashPattern([1,10])
+        pen = QPen(color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        # +
         painter.setPen(pen)
         painter.drawLine(start, end)
         painter.end()
