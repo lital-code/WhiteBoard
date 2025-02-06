@@ -3,36 +3,48 @@ import socket
 import threading
 from re import match
 
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint,pyqtSignal
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor
 from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, \
-    QColorDialog, QHBoxLayout, QDialog, QDialogButtonBox, QRadioButton
+    QColorDialog, QHBoxLayout, QDialog, QDialogButtonBox, QRadioButton,QGridLayout
 import random
 
 SPRAY_PARTICLES = 100
 SPRAY_DIAMETER = 10
 
 class CustomDialog(QDialog):
-    def __init__(self):
+    brushes_signal = pyqtSignal(str)
+    def __init__(self,mode):
         super().__init__()
         self.setWindowTitle("Brushes")
+        self.mode = mode
 
-        lineBrush = QRadioButton("solid line")
-        if(lineBrush.clicked()):
-            self.mode = "line"
-        #lineBrush.clicked(self.line)
-        spray_brush = QRadioButton("spray")
-        if(spray_brush.clicked()):
-            self.mode = "spray"
+        layout = QGridLayout()
+        message = QLabel("Choose your brush type:")
+        self.lineBrush = QRadioButton("solid line")
+        self.lineBrush.toggled.connect(self.brush_type_handle)
+        self.spray_brush = QRadioButton("spray")
+        self.spray_brush.toggled.connect(self.brush_type_handle)
 
-        layout = QVBoxLayout()
-        message = QLabel("Choose your brush type")
+        if (self.mode == "line"):
+            self.lineBrush.toggle()
+        elif(self.mode == "spray"):
+            self.spray_brush.toggle()
+
         layout.addWidget(message)
-
-        layout.addWidget(lineBrush)
-        layout.addWidget(spray_brush)
+        layout.addWidget(self.lineBrush)
+        layout.addWidget(self.spray_brush)
 
         self.setLayout(layout)
+
+    def brush_type_handle(self):
+        if(self.lineBrush.isChecked()):
+            self.mode = "line"
+        elif (self.spray_brush.isChecked()):
+            self.mode="spray"
+
+    def closeEvent(self, a0):
+        self.brushes_signal.emit(self.mode)
 
 class WhiteboardClient(QMainWindow):
     def __init__(self, host="127.0.0.1", port=12345):
@@ -79,7 +91,7 @@ class WhiteboardClient(QMainWindow):
         # def spray():
         #     self.mode = "spray"
 
-        # test button
+        # brushes button
         self.brushes_button = QPushButton("Brushes")
         self.brushes_button.clicked.connect(self.open_brushes_dialog)
         self.button_layout.addWidget(self.brushes_button)
@@ -222,8 +234,12 @@ class WhiteboardClient(QMainWindow):
         return QPoint(int(point.x() * scale_x), int(point.y() * scale_y))
 
     def open_brushes_dialog(self):
-        dlg = CustomDialog()
+        dlg = CustomDialog(self.mode)
+        dlg.brushes_signal.connect(self.brush_event_handle)
         dlg.exec()
+
+    def brush_event_handle(self,event):
+        self.mode=event
 
 
 
