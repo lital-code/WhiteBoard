@@ -1,3 +1,4 @@
+import json
 import socket
 import threading
 
@@ -14,8 +15,7 @@ class WhiteboardServer:
         for client in self.clients:
             if client != sender_socket:
                 try:
-                    print(f"Broadcasting: {data.decode()} to client {client.getpeername()}")  # Debug log
-                    client.sendall(data)
+                    client.sendall(json.dumps(data).encode())  # Broadcast as JSON
                 except Exception as e:
                     print(f"Error sending data to client {client.getpeername()}: {e}")
                     self.clients.remove(client)
@@ -27,8 +27,8 @@ class WhiteboardServer:
             try:
                 data = client_socket.recv(1024)
                 if data:
-                    print(f"Received from client {client_socket.getpeername()}: {data.decode()}")  # Debug log
-                    self.broadcast(data, client_socket)
+                    data = json.loads(data)
+                    self.broadcast(data, client_socket)  # Broadcast received data
                 else:
                     break
             except Exception as e:
@@ -43,6 +43,7 @@ class WhiteboardServer:
             client_socket, _ = self.server_socket.accept()
             print(f"New client connected: {client_socket.getpeername()}")
             threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
+
 
 if __name__ == "__main__":
     server = WhiteboardServer()
