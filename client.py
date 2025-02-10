@@ -4,46 +4,90 @@ import socket
 import threading
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor
-from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, QColorDialog, QHBoxLayout, QDialog, QDialogButtonBox, QRadioButton, QGridLayout
+from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, \
+    QColorDialog, QHBoxLayout, QDialog, QSlider, QRadioButton, QGridLayout, QButtonGroup, QCheckBox
 import random
 
-SPRAY_PARTICLES = 100
-SPRAY_DIAMETER = 10
 
 class CustomDialog(QDialog):
-    brushes_signal = pyqtSignal(str)
+    brushes_signal = pyqtSignal(dict)
 
-    def __init__(self, mode):
+    def __init__(self,brush_settings):
         super().__init__()
         self.setWindowTitle("Brushes")
-        self.mode = mode
 
         layout = QGridLayout()
         message = QLabel("Choose your brush type:")
-        self.lineBrush = QRadioButton("solid line")
-        self.lineBrush.toggled.connect(self.brush_type_handle)
+        brush_type_group = QButtonGroup(self)
+        self.lineBrush = QRadioButton("line")
         self.spray_brush = QRadioButton("spray")
-        self.spray_brush.toggled.connect(self.brush_type_handle)
+        brush_type_group.addButton(self.lineBrush)
+        brush_type_group.addButton((self.spray_brush))
+        self.spray_brush.setChecked(True) if brush_settings["mode"]=="spray" else self.lineBrush.setChecked(True)
 
-        if self.mode == "line":
-            self.lineBrush.toggle()
-        elif self.mode == "spray":
-            self.spray_brush.toggle()
+        self.line_brush_group = QButtonGroup(self)
+        self.round_cap = QRadioButton("Round Cap")
+        self.square_cap = QRadioButton("Square Cap")
+        self.round_cap.setChecked(True) if brush_settings["cap_type"]==Qt.PenCapStyle.RoundCap else self.square_cap.setChecked(True)
+        self.line_brush_group.addButton(self.round_cap)
+        self.line_brush_group.addButton(self.square_cap)
+        self.line_width = QSlider(Qt.Orientation.Horizontal)
+        self.line_width.setRange(5,50)
+        self.line_width.setPageStep(1)
+        self.line_width.setValue(brush_settings["width"])
+        self.opacity = QSlider(Qt.Orientation.Horizontal)
+        self.opacity.setRange(0,100)
+        self.opacity.setValue(brush_settings["opacity"])
+        self.opacity.setPageStep(10)
+        self.dash = QCheckBox("dashed")
+        self.dash.setChecked(True) if brush_settings["dashed"] == Qt.PenStyle.DashLine else self.dash.setChecked(False)
 
-        layout.addWidget(message)
-        layout.addWidget(self.lineBrush)
-        layout.addWidget(self.spray_brush)
+        self.spray_diameter = QSlider(Qt.Orientation.Horizontal)
+        self.spray_diameter.setRange(5,50)
+        self.spray_diameter.setValue(brush_settings["diameter"])
+        self.spray_density = QSlider(Qt.Orientation.Horizontal)
+        self.spray_density.setRange(50,500)
+        self.spray_density.setValue(brush_settings["density"])
+
+        line_layout = QVBoxLayout()
+        line_layout.addWidget(self.round_cap)
+        line_layout.addWidget(self.square_cap)
+        line_layout.addWidget(QLabel("width"))
+        line_layout.addWidget(self.line_width)
+        line_layout.addWidget(QLabel("opacity"))
+        line_layout.addWidget(self.opacity)
+        line_layout.addWidget(self.dash)
+
+        spray_layout = QVBoxLayout()
+        spray_layout.addWidget(QLabel("diameter"))
+        spray_layout.addWidget(self.spray_diameter)
+        spray_layout.addWidget(QLabel("density"))
+        spray_layout.addWidget(self.spray_density)
+
+        self.submit_btn = QPushButton()
+        self.submit_btn.setText("OK")
+        self.submit_btn.clicked.connect(self.handle_submit)
+
+        layout.addWidget(message,0,0)
+        layout.addWidget(self.lineBrush,1,0,alignment=Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(line_layout,1,1)
+        layout.addWidget(self.spray_brush,2,0,alignment=Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(spray_layout,2,1)
+
+        layout.addWidget(self.submit_btn,3,1)
 
         self.setLayout(layout)
 
-    def brush_type_handle(self):
-        if self.lineBrush.isChecked():
-            self.mode = "line"
-        elif self.spray_brush.isChecked():
-            self.mode = "spray"
+    def handle_submit(self):
+        self.brush_settings = {"mode": "line" if self.lineBrush.isChecked() else "spray",
+                               "opacity": self.opacity.value(), "diameter": self.spray_diameter.value(),
+                               "density": self.spray_density.value(), "width": self.line_width.value(),
+                               "dashed": Qt.PenStyle.DashLine if self.dash.isChecked() else Qt.PenStyle.SolidLine,
+                               "cap_type": Qt.PenCapStyle.SquareCap if self.square_cap.isChecked() else Qt.PenCapStyle.RoundCap}
+        self.brushes_signal.emit(self.brush_settings)
+        self.close()
 
-    def closeEvent(self, a0):
-        self.brushes_signal.emit(self.mode)
+
 
 
 class WhiteboardClient(QMainWindow):
@@ -77,7 +121,6 @@ class WhiteboardClient(QMainWindow):
         self.color_button.clicked.connect(self.choose_color)
         self.button_layout.addWidget(self.color_button)
 
-        self.mode = "line"
         self.brushes_button = QPushButton("Brushes")
         self.brushes_button.clicked.connect(self.open_brushes_dialog)
         self.button_layout.addWidget(self.brushes_button)
@@ -95,6 +138,8 @@ class WhiteboardClient(QMainWindow):
         # Start listening for incoming data
         self.new_drawing_signal.connect(self.update_drawing)
         threading.Thread(target=self.receive_data, daemon=True).start()
+        self.brush_settings = {"mode":"line", "opacity": 100, "diameter": 10, "density": 100, "width": 5,
+                               "dashed": Qt.PenStyle.SolidLine, "cap_type": Qt.PenCapStyle.RoundCap}
 
     def update_drawing(self, data):
         """Handle received drawing data in the main thread."""
@@ -129,10 +174,10 @@ class WhiteboardClient(QMainWindow):
         if self.drawing and event.buttons() == Qt.MouseButton.LeftButton:
             current_point = event.position()
 
-            if self.mode == "line":
+            if self.brush_settings["mode"] == "line":
                 self.draw_line(self.last_point, current_point, self.pen_color)
 
-            elif self.mode == "spray":
+            elif self.brush_settings["mode"] == "spray":
                 self.draw_spray(event)
 
             data = {
@@ -172,9 +217,9 @@ class WhiteboardClient(QMainWindow):
         p.setColor(self.pen_color)
         painter.setPen(p)
 
-        for n in range(SPRAY_PARTICLES):
-            xo = random.gauss(0, SPRAY_DIAMETER)
-            yo = random.gauss(0, SPRAY_DIAMETER)
+        for n in range(self.brush_settings["density"]):
+            xo = random.gauss(0, self.brush_settings["diameter"])
+            yo = random.gauss(0, self.brush_settings["diameter"])
             painter.drawPoint(
                 int(e.position().x() + xo),
                 int(e.position().y() + yo)
@@ -186,19 +231,20 @@ class WhiteboardClient(QMainWindow):
     def draw_line(self, start, end, color):
         """Draw a line on the local canvas."""
         painter = QPainter(self.pixmap)
-        pen = QPen(color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        color.setAlphaF(self.brush_settings["opacity"]/100)
+        pen = QPen(color, self.brush_settings["width"], self.brush_settings["dashed"], self.brush_settings["cap_type"], Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.drawLine(start, end)
         painter.end()
         self.canvas.setPixmap(self.pixmap)
 
     def open_brushes_dialog(self):
-        dlg = CustomDialog(self.mode)
+        dlg = CustomDialog(self.brush_settings)
         dlg.brushes_signal.connect(self.brush_event_handle)
         dlg.exec()
 
     def brush_event_handle(self, event):
-        self.mode = event
+        self.brush_settings = event
 
 
 if __name__ == "__main__":
