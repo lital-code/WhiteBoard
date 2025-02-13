@@ -245,6 +245,7 @@ class WhiteboardClient(QMainWindow):
         painter.end()
         self.canvas.setPixmap(self.pixmap)
 
+
     def open_brushes_dialog(self):
         dlg = CustomDialog(self.brush_settings)
         dlg.brushes_signal.connect(self.brush_event_handle)
