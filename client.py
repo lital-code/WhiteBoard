@@ -2,16 +2,90 @@ import json
 import sys
 import socket
 import threading
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal
-from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QSize
+from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QMouseEvent
 from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, \
-    QColorDialog, QHBoxLayout, QDialog, QSlider, QRadioButton, QGridLayout, QButtonGroup, QCheckBox
+    QColorDialog, QHBoxLayout, QDialog, QSlider, QRadioButton, QGridLayout, QButtonGroup, QCheckBox, QBoxLayout, \
+    QLayout, QTableWidget
 import random
 
-class BoardsDialog(QDialog):
+class clickableLabel(QLabel):
     def __init__(self):
         super().__init__()
+
+    def mousePressEvent(self, ev):
+        self.setProperty("active","True")
+        print(self.property("active"))
+
+class BoardsDialog(QDialog):
+    def __init__(self,current_board,socket):
+        super().__init__()
         self.setWindowTitle("My Boards")
+        self.setGeometry(200,200,800,600)
+        self.setStyleSheet("""
+            QLabel{
+                max-width:192px;
+                max-height:108px;
+                padding:20px;
+            }
+            QLabel:hover{
+                background-color:grey;
+            }
+            QLabel:pressed{
+            
+            }
+            QGridLayout{
+                background-color:black;
+            }
+        """)
+
+        dialog_layout = QVBoxLayout()
+        button_layout = QHBoxLayout()
+        boards_layout = QGridLayout()
+
+        label = clickableLabel()
+        pixmap = QPixmap()
+        pixmap.convertFromImage(current_board)
+        label.setPixmap(pixmap)
+        boards_layout.addWidget(label)
+
+
+        upload_button = QPushButton()
+        upload_button.setText("Upload")
+        upload_button.clicked.connect(self.upload_board)
+
+        open_button = QPushButton()
+        open_button.setText("Open")
+        open_button.clicked.connect(self.open_board)
+
+        delete_button = QPushButton()
+        delete_button.setText("Delete")
+        delete_button.clicked.connect(self.delete_board)
+
+        button_layout.addWidget(upload_button)
+        button_layout.addWidget(open_button)
+        button_layout.addWidget(delete_button)
+
+        dialog_layout.addLayout(boards_layout)
+        dialog_layout.addLayout(button_layout)
+        self.setLayout(dialog_layout)
+
+    def upload_board(self):
+        return
+
+    def open_board(self):
+        return
+
+    def delete_board(self):
+        return
+
+    def on_board_click(self,event:QMouseEvent):
+        clicked_board = QWidget().childAt(event.pos())
+        clicked_board.setProperty("active",True)
+        return
+
+
+
 
 class CustomDialog(QDialog):
     brushes_signal = pyqtSignal(dict)
@@ -189,6 +263,7 @@ class WhiteboardClient(QMainWindow):
                 self.draw_spray(event)
 
             data = {
+                "type":"draw",
                 "last_point_x": self.last_point.x(),
                 "last_point_y": self.last_point.y(),
                 "current_point_x": current_point.x(),
@@ -211,6 +286,7 @@ class WhiteboardClient(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Image", "", "PNG Files (*.png);;All Files (*)")
         if file_path:
             self.pixmap.save(file_path, "PNG")
+
 
     def choose_color(self):
         color = QColorDialog.getColor(initial=self.pen_color, parent=self, title="Select Pen Color")
@@ -255,7 +331,7 @@ class WhiteboardClient(QMainWindow):
         self.brush_settings = event
 
     def open_boards_dialog(self):
-        boards_dialog = BoardsDialog()
+        boards_dialog = BoardsDialog(self.pixmap.toImage().scaledToHeight(108),self.client_socket)
         boards_dialog.exec()
 
 

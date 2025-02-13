@@ -25,10 +25,13 @@ class WhiteboardServer:
         self.clients.append(client_socket)
         while True:
             try:
-                data = client_socket.recv(1024)
+                data = client_socket.recv(1024).decode()
                 if data:
                     data = json.loads(data)
-                    self.broadcast(data, client_socket)  # Broadcast received data
+                    if data["type"] == "draw":
+                        self.broadcast(data, client_socket)  # Broadcast received data
+                    elif data["type"] == "save":
+                        self.save_board(data,client_socket)
                 else:
                     break
             except Exception as e:
@@ -43,6 +46,9 @@ class WhiteboardServer:
             client_socket, _ = self.server_socket.accept()
             print(f"New client connected: {client_socket.getpeername()}")
             threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
+    def save_board(self,data,client_socket):
+
+        return
 
 
 if __name__ == "__main__":
