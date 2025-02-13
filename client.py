@@ -8,6 +8,10 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBo
     QColorDialog, QHBoxLayout, QDialog, QSlider, QRadioButton, QGridLayout, QButtonGroup, QCheckBox
 import random
 
+class BoardsDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("My Boards")
 
 class CustomDialog(QDialog):
     brushes_signal = pyqtSignal(dict)
@@ -113,6 +117,10 @@ class WhiteboardClient(QMainWindow):
         self.button_layout = QHBoxLayout()
         self.layout.addLayout(self.button_layout)
 
+        self.boards_button = QPushButton("My boards")
+        self.boards_button.clicked.connect(self.open_boards_dialog)
+        self.button_layout.addWidget(self.boards_button)
+
         self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(self.save_image)
         self.button_layout.addWidget(self.save_button)
@@ -200,8 +208,7 @@ class WhiteboardClient(QMainWindow):
             self.drawing = False
 
     def save_image(self):
-        options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Image", "", "PNG Files (*.png);;All Files (*)", options=options)
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Image", "", "PNG Files (*.png);;All Files (*)")
         if file_path:
             self.pixmap.save(file_path, "PNG")
 
@@ -245,6 +252,10 @@ class WhiteboardClient(QMainWindow):
 
     def brush_event_handle(self, event):
         self.brush_settings = event
+
+    def open_boards_dialog(self):
+        boards_dialog = BoardsDialog()
+        boards_dialog.exec()
 
 
 if __name__ == "__main__":
