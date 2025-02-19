@@ -2,24 +2,44 @@ import json
 import sys
 import socket
 import threading
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QMouseEvent
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QByteArray, QBuffer, QIODevice
+from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor
 from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, \
-    QColorDialog, QHBoxLayout, QDialog, QSlider, QRadioButton, QGridLayout, QButtonGroup, QCheckBox, QBoxLayout, \
-    QLayout, QTableWidget
+    QColorDialog, QHBoxLayout, QDialog, QSlider, QRadioButton, QGridLayout, QButtonGroup, QCheckBox
 import random
 
+
 class clickableLabel(QLabel):
+    board_clicked_sgnl = pyqtSignal(QLabel)
     def __init__(self):
         super().__init__()
+        self.setProperty("active",False)
 
     def mousePressEvent(self, ev):
-        self.setProperty("active","True")
-        print(self.property("active"))
+        self.setProperty("active",False) if self.property("active") else self.setProperty("active",True)
+        if self.property("active"):
+            self.setStyleSheet("""
+            QLabel{background-color:red}
+            QLabel:hover{
+                background-color:grey;
+            }
+            """)
+        else:
+            self.setStyleSheet("""
+            QLabel{background-color:none}
+            QLabel:hover{
+                background-color:grey;
+            }
+            """)
+        self.board_clicked_sgnl.emit(self)
+
+
 
 class BoardsDialog(QDialog):
     def __init__(self,current_board,socket):
         super().__init__()
+        self.selected_board = None
+        self.socket = socket
         self.setWindowTitle("My Boards")
         self.setGeometry(200,200,800,600)
         self.setStyleSheet("""
@@ -31,8 +51,8 @@ class BoardsDialog(QDialog):
             QLabel:hover{
                 background-color:grey;
             }
-            QLabel:pressed{
-            
+            QLabel[active="True"]{
+                background-color:red;
             }
             QGridLayout{
                 background-color:black;
@@ -41,13 +61,15 @@ class BoardsDialog(QDialog):
 
         dialog_layout = QVBoxLayout()
         button_layout = QHBoxLayout()
-        boards_layout = QGridLayout()
+        self.boards_layout = QGridLayout()
 
         label = clickableLabel()
+
+        label.board_clicked_sgnl.connect(self.on_board_click)
         pixmap = QPixmap()
         pixmap.convertFromImage(current_board)
         label.setPixmap(pixmap)
-        boards_layout.addWidget(label)
+        self.boards_layout.addWidget(label)
 
 
         upload_button = QPushButton()
@@ -66,12 +88,13 @@ class BoardsDialog(QDialog):
         button_layout.addWidget(open_button)
         button_layout.addWidget(delete_button)
 
-        dialog_layout.addLayout(boards_layout)
+        dialog_layout.addLayout(self.boards_layout)
         dialog_layout.addLayout(button_layout)
         self.setLayout(dialog_layout)
 
     def upload_board(self):
-        return
+        self.socket.send(json.dumps({"type":"save"}).encode())
+        self.send_big_data(self.socket,self.pixmap_to_byte_array(self.selected_board.pixmap()))
 
     def open_board(self):
         return
@@ -79,13 +102,40 @@ class BoardsDialog(QDialog):
     def delete_board(self):
         return
 
-    def on_board_click(self,event:QMouseEvent):
-        clicked_board = QWidget().childAt(event.pos())
-        clicked_board.setProperty("active",True)
+    def get_boards(self):
         return
 
+    def on_board_click(self,label):
+        for i in range(self.boards_layout.count()):
+            board = self.boards_layout.itemAt(i).widget()
+            if board is not label:
+                board.setProperty("active", False)
+            else:
+                self.selected_board = board
+        return
+
+    def receive_big_data(self, client_socket):
+        data_size = int(client_socket.recv(1024).decode())
+        # data_name = data["data_name"]
+        data = b''
+        while data_size > 0:
+            data += client_socket.recv(1024)
+            data_size -= 1024
+        return data
+
+    def send_big_data(self, client_socket, data):
+        data_size = sys.getsizeof(data)
+        client_socket.send(str(data_size).encode())
+        client_socket.send(data)
 
 
+    def pixmap_to_byte_array(self, pixmap):
+        # Convert QPixmap to QByteArray
+        byte_array = QByteArray()
+        buffer = QBuffer(byte_array)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        pixmap.save(buffer, 'PNG')  # Save the pixmap as PNG format in the byte array
+        return byte_array
 
 class CustomDialog(QDialog):
     brushes_signal = pyqtSignal(dict)
