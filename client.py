@@ -3,10 +3,12 @@ import sys
 import socket
 import threading
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QByteArray, QBuffer, QIODevice
-from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor
+from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QImage
 from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, \
     QColorDialog, QHBoxLayout, QDialog, QSlider, QRadioButton, QGridLayout, QButtonGroup, QCheckBox
 import random
+
+from select import select
 
 
 class clickableLabel(QLabel):
@@ -62,14 +64,9 @@ class BoardsDialog(QDialog):
         dialog_layout = QVBoxLayout()
         button_layout = QHBoxLayout()
         self.boards_layout = QGridLayout()
-
-        label = clickableLabel()
-
-        label.board_clicked_sgnl.connect(self.on_board_click)
-        pixmap = QPixmap()
-        pixmap.convertFromImage(current_board)
-        label.setPixmap(pixmap)
-        self.boards_layout.addWidget(label)
+        self.boards = [{"original_resolution":QPixmap(current_board), "reduced_resolution":QPixmap(current_board.scaledToHeight(108))}]
+        self.get_boards()
+        self.populate_boards()
 
 
         upload_button = QPushButton()
@@ -92,9 +89,17 @@ class BoardsDialog(QDialog):
         dialog_layout.addLayout(button_layout)
         self.setLayout(dialog_layout)
 
+    def populate_boards(self):
+        for index,board in enumerate(self.boards):
+            label = clickableLabel()
+            label.board_clicked_sgnl.connect(self.on_board_click)
+            label.setPixmap(board["reduced_resolution"])
+            label.setProperty("id",str(index))
+            self.boards_layout.addWidget(label)
+
     def upload_board(self):
         self.socket.send(json.dumps({"type":"save"}).encode())
-        self.send_big_data(self.socket,self.pixmap_to_byte_array(self.selected_board.pixmap()))
+        self.send_big_data(self.socket,self.pixmap_to_byte_array(self.selected_board["original_resolution"]))
 
     def open_board(self):
         return
@@ -103,15 +108,22 @@ class BoardsDialog(QDialog):
         return
 
     def get_boards(self):
+        self.socket.send(json.dumps({"type": "get_boards"}).encode())
+        #error when reading data from the server because there is another thread reding from the server
+        raw_data = self.socket.recv(1024)
+        boards_amount = int(raw_data.decode())
+        for i in range(boards_amount):
+            board = self.byte_array_to_image(self.receive_big_data(self.socket))
+            self.boards.append({"original_resolution":QPixmap(board),"reduced_resolution":QPixmap(board.scaledToHeight(108))})
         return
 
     def on_board_click(self,label):
-        for i in range(self.boards_layout.count()):
-            board = self.boards_layout.itemAt(i).widget()
-            if board is not label:
-                board.setProperty("active", False)
-            else:
+        for index,board in enumerate(self.boards):
+            print(label.pixmap())
+            print(board["reduced_resolution"])
+            if label.property("id") == str(index):
                 self.selected_board = board
+
         return
 
     def receive_big_data(self, client_socket):
@@ -124,9 +136,14 @@ class BoardsDialog(QDialog):
         return data
 
     def send_big_data(self, client_socket, data):
-        data_size = sys.getsizeof(data)
-        client_socket.send(str(data_size).encode())
-        client_socket.send(data)
+        data_size = len(data)  # Use len() for accurate size calculation, not sys.getsizeof
+        print(f"sending big data to server file size: {data_size} data: {data}")
+
+        # First send the size as a fixed-size 4-byte integer (standard method for sending data size)
+        client_socket.sendall(data_size.to_bytes(4, byteorder='big'))
+
+        # Then send the actual data
+        client_socket.sendall(data)
 
 
     def pixmap_to_byte_array(self, pixmap):
@@ -136,6 +153,24 @@ class BoardsDialog(QDialog):
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
         pixmap.save(buffer, 'PNG')  # Save the pixmap as PNG format in the byte array
         return byte_array
+
+    def image_to_byte_array(self,image:QImage):
+        byte_array = QByteArray()
+        buffer = QBuffer(byte_array)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        image.save(buffer, 'PNG')  # Save the pixmap as PNG format in the byte array
+        return byte_array
+
+    def byte_array_to_image(self, byte_array):
+        # Convert byte array to QByteArray (if needed)
+        byte_array = QByteArray(byte_array)
+        image = QImage()
+
+        if not image.loadFromData(byte_array):
+            print("Error: Failed to load image from data")
+            return None  # Or raise an exception if needed
+
+        return image
 
 class CustomDialog(QDialog):
     brushes_signal = pyqtSignal(dict)
@@ -381,7 +416,7 @@ class WhiteboardClient(QMainWindow):
         self.brush_settings = event
 
     def open_boards_dialog(self):
-        boards_dialog = BoardsDialog(self.pixmap.toImage().scaledToHeight(108),self.client_socket)
+        boards_dialog = BoardsDialog(self.pixmap.toImage(),self.client_socket)
         boards_dialog.exec()
 
 
