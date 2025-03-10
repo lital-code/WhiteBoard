@@ -2,6 +2,8 @@ import json
 import sys
 import socket
 import threading
+from datetime import datetime
+
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QByteArray, QBuffer, QIODevice
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QImage
 from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QWidget, QFileDialog, \
@@ -64,7 +66,7 @@ class BoardsDialog(QDialog):
         dialog_layout = QVBoxLayout()
         button_layout = QHBoxLayout()
         self.boards_layout = QGridLayout()
-        self.boards = [{"original_resolution":QPixmap(current_board), "reduced_resolution":QPixmap(current_board.scaledToHeight(108))}]
+        self.boards = [{"original_resolution":QPixmap(current_board), "reduced_resolution":QPixmap(current_board.scaledToHeight(108)),"name":str(datetime.now()).replace(':', '')}]
         self.get_boards()
         self.populate_boards()
 
@@ -94,40 +96,59 @@ class BoardsDialog(QDialog):
             label = clickableLabel()
             label.board_clicked_sgnl.connect(self.on_board_click)
             label.setPixmap(board["reduced_resolution"])
-            label.setProperty("id",str(index))
+            label.setProperty("name",board["name"])
             self.boards_layout.addWidget(label)
 
     def upload_board(self):
-        self.socket.send(json.dumps({"type":"save"}).encode())
+        self.socket.send(json.dumps({"action":"save"}).encode())
         self.send_big_data(self.socket,self.pixmap_to_byte_array(self.selected_board["original_resolution"]))
 
     def open_board(self):
         return
 
     def delete_board(self):
-        return
+        self.socket.send(json.dumps({"action":"delete_board","data":self.selected_board["name"]}).encode())
+        self.boards.remove(self.selected_board)
+        self.selected_board = None
+        # Remove all widgets from the grid layout
+        for i in range(self.boards_layout.count()):
+            item = self.boards_layout.itemAt(i)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self.populate_boards()
 
     def get_boards(self):
-        self.socket.send(json.dumps({"type": "get_boards"}).encode())
-        #error when reading data from the server because there is another thread reding from the server
+        self.socket.send(json.dumps({"action": "get_boards"}).encode())
         raw_data = self.socket.recv(1024)
         boards_amount = int(raw_data.decode())
         for i in range(boards_amount):
+            file_name = self.socket.recv(1024).decode()
+            self.socket.send(b"NAME_RECEIVED")
             board = self.byte_array_to_image(self.receive_big_data(self.socket))
-            self.boards.append({"original_resolution":QPixmap(board),"reduced_resolution":QPixmap(board.scaledToHeight(108))})
-        return
+            self.boards.append({"original_resolution":QPixmap(board),"reduced_resolution":QPixmap(board.scaledToHeight(108)),"name":file_name})
 
     def on_board_click(self,label):
-        for index,board in enumerate(self.boards):
-            print(label.pixmap())
-            print(board["reduced_resolution"])
-            if label.property("id") == str(index):
-                self.selected_board = board
+        for i in range(self.boards_layout.count()):
+            board = self.boards[i]
+            item = self.boards_layout.itemAt(i).widget()
+            if label:
+                if label.property("name") == board["name"]:
+                    self.selected_board = board
+                else:
+                    label.setProperty("active",False)
+                    self.setStyleSheet("""
+                                QLabel{background-color:none}
+                                QLabel:hover{
+                                    background-color:grey;
+                                }
+                                """)
 
-        return
+
 
     def receive_big_data(self, client_socket):
         data_size = int(client_socket.recv(1024).decode())
+        client_socket.send(b"SIZE_RECEIVED")
         # data_name = data["data_name"]
         data = b''
         while data_size > 0:
@@ -163,12 +184,11 @@ class BoardsDialog(QDialog):
 
     def byte_array_to_image(self, byte_array):
         # Convert byte array to QByteArray (if needed)
-        byte_array = QByteArray(byte_array)
         image = QImage()
-
-        if not image.loadFromData(byte_array):
-            print("Error: Failed to load image from data")
-            return None  # Or raise an exception if needed
+        image.loadFromData(byte_array)
+        # if not image.loadFromData(byte_array):
+        #     print("Error: Failed to load image from data")
+        #     return None  # Or raise an exception if needed
 
         return image
 
@@ -261,8 +281,15 @@ class WhiteboardClient(QMainWindow):
         self.setWindowTitle("Whiteboard Client")
         self.setMinimumSize(800, 600)
 
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((host, port))
+        self.drawing_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.drawing_client_socket.connect((host, port))
+        self.drawing_client_socket.send(json.dumps({"connection_type":"drawing_info"}).encode())
+        print("connected to drawing server")
+
+        self.files_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.files_client_socket.connect((host, port))
+        self.files_client_socket.send(json.dumps({"connection_type": "files_info"}).encode())
+        print("connected to files server")
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -304,7 +331,7 @@ class WhiteboardClient(QMainWindow):
 
         # Start listening for incoming data
         self.new_drawing_signal.connect(self.update_drawing)
-        threading.Thread(target=self.receive_data, daemon=True).start()
+        threading.Thread(target=self.receive_drawing_data, daemon=True).start()
         self.brush_settings = {"mode":"line", "opacity": 100, "diameter": 10, "density": 100, "width": 5,
                                "dashed": Qt.PenStyle.SolidLine, "cap_type": Qt.PenCapStyle.RoundCap}
 
@@ -320,11 +347,11 @@ class WhiteboardClient(QMainWindow):
         end_point = QPoint(x2, y2)
         self.draw_line(start_point, end_point, color)
 
-    def receive_data(self):
+    def receive_drawing_data(self):
         """Receive drawing data from the server."""
         while True:
             try:
-                data = self.client_socket.recv(1024)
+                data = self.drawing_client_socket.recv(1024)
                 if data:
                     data = json.loads(data.decode())
                     self.new_drawing_signal.emit(data)  # Emit signal to update drawing
@@ -348,7 +375,6 @@ class WhiteboardClient(QMainWindow):
                 self.draw_spray(event)
 
             data = {
-                "type":"draw",
                 "last_point_x": self.last_point.x(),
                 "last_point_y": self.last_point.y(),
                 "current_point_x": current_point.x(),
@@ -357,7 +383,7 @@ class WhiteboardClient(QMainWindow):
             }
 
             try:
-                self.client_socket.sendall(json.dumps(data).encode())
+                self.drawing_client_socket.sendall(json.dumps(data).encode())
             except Exception as e:
                 print(f"Error sending data: {e}")
 
@@ -416,7 +442,7 @@ class WhiteboardClient(QMainWindow):
         self.brush_settings = event
 
     def open_boards_dialog(self):
-        boards_dialog = BoardsDialog(self.pixmap.toImage(),self.client_socket)
+        boards_dialog = BoardsDialog(self.pixmap.toImage(),self.files_client_socket)
         boards_dialog.exec()
 
 

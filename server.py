@@ -12,7 +12,7 @@ from datetime import datetime
 
 class WhiteboardServer:
     def __init__(self, host="127.0.0.1", port=12345):
-        self.clients = []
+        self.drawing_clients = []
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((host, port))
         self.server_socket.listen(5)
@@ -20,42 +20,61 @@ class WhiteboardServer:
 
     def broadcast(self, data, sender_socket):
         """Send drawing data to all clients except the sender."""
-        for client in self.clients:
+        for client in self.drawing_clients:
             if client != sender_socket:
                 try:
                     client.sendall(json.dumps(data).encode())  # Broadcast as JSON
                 except Exception as e:
                     print(f"Error sending data to client {client.getpeername()}: {e}")
-                    self.clients.remove(client)
+                    self.drawing_clients.remove(client)
 
-    def handle_client(self, client_socket):
-        """Handle communication with a single client."""
-        self.clients.append(client_socket)
+    def handle_drawing_client(self, client_socket):
+        """Handle communication with a single drawing client."""
+        self.drawing_clients.append(client_socket)
         while True:
             try:
                 data = client_socket.recv(1024).decode()
                 if data:
                     data = json.loads(data)
-                    if data["type"] == "draw":
-                        self.broadcast(data, client_socket)  # Broadcast received data
-                    elif data["type"] == "save":
-                        self.save_board(client_socket)
-                    elif data["type"] == "get_boards":
-                        self.get_boards(client_socket)
-                else:
-                    break
+                    self.broadcast(data, client_socket)  # Broadcast received data
             except Exception as e:
                 print(f"Error handling client {client_socket.getpeername()}: {e}")
-                break
         client_socket.close()
-        self.clients.remove(client_socket)
+        self.drawing_clients.remove(client_socket)
+
+    def handle_files_client(self, client_socket):
+        """Handle communication with a single files client."""
+        while True:
+            try:
+                data = client_socket.recv(1024).decode()
+                if data:
+                    data = json.loads(data)
+                    if data["action"] == "save":
+                        self.save_board(client_socket)
+                    elif data["action"] == "get_boards":
+                        self.get_boards(client_socket)
+                    elif data["action"] == "disconnect":
+                        break
+            except Exception as e:
+                print(f"Error handling client {client_socket.getpeername()}: {e}")
+        client_socket.close()
 
     def start(self):
         """Accept new clients and start a thread for each."""
         while True:
             client_socket, _ = self.server_socket.accept()
-            print(f"New client connected: {client_socket.getpeername()}")
-            threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
+            try:
+                print(f"New client connected: {client_socket.getpeername()}")
+                connection_type = json.loads(client_socket.recv(1024).decode())["connection_type"]
+                if connection_type == "drawing_info":
+                    threading.Thread(target=self.handle_drawing_client, args=(client_socket,), daemon=True).start()
+                elif connection_type=="files_info":
+                    threading.Thread(target=self.handle_files_client, args=(client_socket,), daemon=True).start()
+                else:
+                    client_socket.close()
+            except Exception as e:
+                print(f"Error handling client {client_socket.getpeername()}: {e}")
+                client_socket.close()
 
     def save_board(self, client_socket):
         data = self.receive_big_data(client_socket)
@@ -96,6 +115,7 @@ class WhiteboardServer:
     def send_big_data(self,client_socket,data):
         data_size = sys.getsizeof(data)
         client_socket.send(str(data_size).encode())
+        client_socket.recv(1024)
         client_socket.send(data)
 
     def byte_array_to_pixmap(self, byte_array):
@@ -143,13 +163,12 @@ class WhiteboardServer:
         dir_path = os.path.join(save_dir)
         client_socket.sendall(str(len(os.listdir(dir_path))).encode())
         for filename in os.listdir(dir_path):
-            with open(os.path.join(os.getcwd(), filename), 'rb') as f:  # open in readonly mode
-                image = QImage()
-                image.loadFromData(f)
-                self.send_big_data(client_socket,self.image_to_byte_array(image))
-                return
-
-        return
+            with open(os.path.join(dir_path, filename), 'rb') as f:  # open in readonly mode
+                # image = QImage()
+                # image.loadFromData(f.read())
+                client_socket.send(filename.encode())
+                client_socket.recv(1024)
+                self.send_big_data(client_socket,f.read())
 
 if __name__ == "__main__":
     server = WhiteboardServer()
