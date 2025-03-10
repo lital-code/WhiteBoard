@@ -23,7 +23,7 @@ class WhiteboardServer:
         for client in self.drawing_clients:
             if client != sender_socket:
                 try:
-                    client.sendall(json.dumps(data).encode())  # Broadcast as JSON
+                    client.sendall(data)  # Broadcast as JSON
                 except Exception as e:
                     print(f"Error sending data to client {client.getpeername()}: {e}")
                     self.drawing_clients.remove(client)
@@ -33,12 +33,13 @@ class WhiteboardServer:
         self.drawing_clients.append(client_socket)
         while True:
             try:
-                data = client_socket.recv(1024).decode()
+                data = client_socket.recv(1024)
+                print(sys.getsizeof(data))
                 if data:
-                    data = json.loads(data)
                     self.broadcast(data, client_socket)  # Broadcast received data
             except Exception as e:
                 print(f"Error handling client {client_socket.getpeername()}: {e}")
+                break
         client_socket.close()
         self.drawing_clients.remove(client_socket)
 
@@ -53,10 +54,13 @@ class WhiteboardServer:
                         self.save_board(client_socket)
                     elif data["action"] == "get_boards":
                         self.get_boards(client_socket)
+                    elif data["action"] == "delete_board":
+                        self.delete_board(data["data"])
                     elif data["action"] == "disconnect":
                         break
             except Exception as e:
                 print(f"Error handling client {client_socket.getpeername()}: {e}")
+                break;
         client_socket.close()
 
     def start(self):
@@ -169,6 +173,14 @@ class WhiteboardServer:
                 client_socket.send(filename.encode())
                 client_socket.recv(1024)
                 self.send_big_data(client_socket,f.read())
+
+    def delete_board(self,name):
+        save_dir = "Saved Boards"
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)  # Create the directory if it doesn't exist
+        file_path = os.path.join(save_dir,name)
+        os.remove(file_path)
+
 
 if __name__ == "__main__":
     server = WhiteboardServer()

@@ -20,7 +20,7 @@ class clickableLabel(QLabel):
         self.setProperty("active",False)
 
     def mousePressEvent(self, ev):
-        self.setProperty("active",False) if self.property("active") else self.setProperty("active",True)
+        self.setProperty("active",not self.property("active"))
         if self.property("active"):
             self.setStyleSheet("""
             QLabel{background-color:red}
@@ -40,9 +40,10 @@ class clickableLabel(QLabel):
 
 
 class BoardsDialog(QDialog):
-    def __init__(self,current_board,socket):
+    def __init__(self,current_board,socket,update_board_signal):
         super().__init__()
         self.selected_board = None
+        self.update_board_signal = update_board_signal
         self.socket = socket
         self.setWindowTitle("My Boards")
         self.setGeometry(200,200,800,600)
@@ -100,23 +101,28 @@ class BoardsDialog(QDialog):
             self.boards_layout.addWidget(label)
 
     def upload_board(self):
-        self.socket.send(json.dumps({"action":"save"}).encode())
-        self.send_big_data(self.socket,self.pixmap_to_byte_array(self.selected_board["original_resolution"]))
+        if self.selected_board:
+            self.socket.send(json.dumps({"action":"save"}).encode())
+            self.send_big_data(self.socket,self.pixmap_to_byte_array(self.selected_board["original_resolution"]))
 
     def open_board(self):
-        return
+        if self.selected_board:
+            self.update_board_signal.emit(self.selected_board)
+            self.close()
+
 
     def delete_board(self):
-        self.socket.send(json.dumps({"action":"delete_board","data":self.selected_board["name"]}).encode())
-        self.boards.remove(self.selected_board)
-        self.selected_board = None
-        # Remove all widgets from the grid layout
-        for i in range(self.boards_layout.count()):
-            item = self.boards_layout.itemAt(i)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-        self.populate_boards()
+        if self.selected_board and len(self.boards) > 1:
+            self.socket.send(json.dumps({"action":"delete_board","data":self.selected_board["name"]}).encode())
+            self.boards.remove(self.selected_board)
+            self.selected_board = None
+            # Remove all widgets from the grid layout
+            for i in range(self.boards_layout.count()):
+                item = self.boards_layout.itemAt(i)
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
+            self.populate_boards()
 
     def get_boards(self):
         self.socket.send(json.dumps({"action": "get_boards"}).encode())
@@ -136,8 +142,8 @@ class BoardsDialog(QDialog):
                 if label.property("name") == board["name"]:
                     self.selected_board = board
                 else:
-                    label.setProperty("active",False)
-                    self.setStyleSheet("""
+                    item.setProperty("active",False)
+                    item.setStyleSheet("""
                                 QLabel{background-color:none}
                                 QLabel:hover{
                                     background-color:grey;
@@ -275,6 +281,7 @@ class CustomDialog(QDialog):
 
 class WhiteboardClient(QMainWindow):
     new_drawing_signal = pyqtSignal(dict)  # Signal to pass drawing data to the main thread
+    update_board_signal = pyqtSignal(dict)
 
     def __init__(self, host="127.0.0.1", port=12345):
         super().__init__()
@@ -331,16 +338,22 @@ class WhiteboardClient(QMainWindow):
 
         # Start listening for incoming data
         self.new_drawing_signal.connect(self.update_drawing)
+        self.update_board_signal.connect(self.update_current_board)
         threading.Thread(target=self.receive_drawing_data, daemon=True).start()
         self.brush_settings = {"mode":"line", "opacity": 100, "diameter": 10, "density": 100, "width": 5,
                                "dashed": Qt.PenStyle.SolidLine, "cap_type": Qt.PenCapStyle.RoundCap}
 
+    def update_current_board(self,board):
+        self.pixmap = board["original_resolution"]
+        self.canvas.setPixmap(self.pixmap)
+
+
     def update_drawing(self, data):
         """Handle received drawing data in the main thread."""
-        x1 = data.get("last_point_x")
-        y1 = data.get("last_point_y")
-        x2 = data.get("current_point_x")
-        y2 = data.get("current_point_y")
+        x1 = int(data.get("last_point_x"))
+        y1 = int(data.get("last_point_y"))
+        x2 = int(data.get("current_point_x"))
+        y2 = int(data.get("current_point_y"))
         color = data.get("pen_color")
 
         start_point = QPoint(x1, y1)
@@ -351,7 +364,7 @@ class WhiteboardClient(QMainWindow):
         """Receive drawing data from the server."""
         while True:
             try:
-                data = self.drawing_client_socket.recv(1024)
+                data = self.drawing_client_socket.recv(123)
                 if data:
                     data = json.loads(data.decode())
                     self.new_drawing_signal.emit(data)  # Emit signal to update drawing
@@ -425,6 +438,7 @@ class WhiteboardClient(QMainWindow):
     def draw_line(self, start, end, color):
         """Draw a line on the local canvas."""
         painter = QPainter(self.pixmap)
+        color = QColor(color)
         color.setAlphaF(self.brush_settings["opacity"]/100)
         pen = QPen(color, self.brush_settings["width"], self.brush_settings["dashed"], self.brush_settings["cap_type"], Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
@@ -442,7 +456,7 @@ class WhiteboardClient(QMainWindow):
         self.brush_settings = event
 
     def open_boards_dialog(self):
-        boards_dialog = BoardsDialog(self.pixmap.toImage(),self.files_client_socket)
+        boards_dialog = BoardsDialog(self.pixmap.toImage(),self.files_client_socket,self.update_board_signal)
         boards_dialog.exec()
 
 
