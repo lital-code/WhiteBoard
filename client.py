@@ -210,8 +210,10 @@ class CustomDialog(QDialog):
         brush_type_group = QButtonGroup(self)
         self.lineBrush = QRadioButton("line")
         self.spray_brush = QRadioButton("spray")
+        self.eraser = QRadioButton("eraser")
         brush_type_group.addButton(self.lineBrush)
-        brush_type_group.addButton((self.spray_brush))
+        brush_type_group.addButton(self.spray_brush)
+        brush_type_group.addButton(self.eraser)
         self.spray_brush.setChecked(True) if brush_settings["mode"]=="spray" else self.lineBrush.setChecked(True)
 
         self.line_brush_group = QButtonGroup(self)
@@ -263,12 +265,21 @@ class CustomDialog(QDialog):
         layout.addWidget(self.spray_brush,2,0,alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(spray_layout,2,1)
 
-        layout.addWidget(self.submit_btn,3,1)
+        layout.addWidget(self.eraser,3,0,alignment=Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(self.submit_btn,4,1)
 
         self.setLayout(layout)
 
     def handle_submit(self):
-        self.brush_settings = {"mode": "line" if self.lineBrush.isChecked() else "spray",
+        if self.eraser.isChecked():
+            self.brush_settings = {"mode": "line",
+                                   "opacity": 100, "diameter": self.spray_diameter.value(),
+                                   "density": self.spray_density.value(), "width": 40,
+                                   "dashed": Qt.PenStyle.SolidLine,
+                                   "cap_type": Qt.PenCapStyle.SquareCap,
+                                   "color":QColor(Qt.GlobalColor.white)}
+        else:
+            self.brush_settings = {"mode": "line" if self.lineBrush.isChecked() else "spray",
                                "opacity": self.opacity.value(), "diameter": self.spray_diameter.value(),
                                "density": self.spray_density.value(), "width": self.line_width.value(),
                                "dashed": Qt.PenStyle.DashLine if self.dash.isChecked() else Qt.PenStyle.SolidLine,
@@ -283,7 +294,7 @@ class WhiteboardClient(QMainWindow):
     new_drawing_signal = pyqtSignal(dict)  # Signal to pass drawing data to the main thread
     update_board_signal = pyqtSignal(dict)
 
-    def __init__(self, host="127.0.0.1", port=12345):
+    def __init__(self, host="127.0.0.1", port=5000):
         super().__init__()
         self.setWindowTitle("Whiteboard Client")
         self.setMinimumSize(800, 600)
@@ -356,17 +367,26 @@ class WhiteboardClient(QMainWindow):
         y2 = int(data.get("current_point_y"))
         color = data.get("pen_color")
 
+        self.brush_settings = data.get("brush_settings")
+        brush_type = self.brush_settings.get("mode")
+        self.brush_settings.update({"dashed": Qt.PenStyle.DashLine if self.brush_settings["dashed"]=="dash" else Qt.PenStyle.SolidLine})
+        self.brush_settings.update({"cap_type":Qt.PenCapStyle.SquareCap if self.brush_settings["cap_type"]=="square" else Qt.PenCapStyle.RoundCap})
+        self.brush_settings.update({"color":QColor(self.brush_settings["color"])})
         start_point = QPoint(x1, y1)
         end_point = QPoint(x2, y2)
-        self.draw_line(start_point, end_point, color)
+        if brush_type=="spray":
+            self.draw_spray(start_point,end_point)
+        else:
+            self.draw_line(start_point, end_point, color)
 
     def receive_drawing_data(self):
         """Receive drawing data from the server."""
         while True:
             try:
-                data = self.drawing_client_socket.recv(123)
+                data = self.drawing_client_socket.recv(1024)
                 if data:
                     data = json.loads(data.decode())
+                    print(f"data received from server: {data}")
                     self.new_drawing_signal.emit(data)  # Emit signal to update drawing
             except Exception as e:
                 print(f"Error receiving data: {e}")
@@ -385,18 +405,24 @@ class WhiteboardClient(QMainWindow):
                 self.draw_line(self.last_point, current_point, self.pen_color)
 
             elif self.brush_settings["mode"] == "spray":
-                self.draw_spray(event)
+                self.draw_spray(self.last_point,current_point)
 
             data = {
                 "last_point_x": self.last_point.x(),
                 "last_point_y": self.last_point.y(),
                 "current_point_x": current_point.x(),
                 "current_point_y": current_point.y(),
-                "pen_color": self.pen_color.rgb()
+                "pen_color": self.pen_color.rgb(),
+                "brush_settings":{**self.brush_settings,
+                                  "dashed": "dash" if self.brush_settings["dashed"] == Qt.PenStyle.DashLine else "solid",
+                                  "cap_type": "square" if self.brush_settings["cap_type"] else "round",
+                                  "color":self.brush_settings["color"].rgb() if "color" in self.brush_settings.keys() else ""
+                                  }
             }
 
             try:
                 self.drawing_client_socket.sendall(json.dumps(data).encode())
+                print(f"sending data to server: {data}")
             except Exception as e:
                 print(f"Error sending data: {e}")
 
@@ -417,7 +443,7 @@ class WhiteboardClient(QMainWindow):
         if color.isValid():
             self.pen_color = color
 
-    def draw_spray(self, e):
+    def draw_spray(self, last_point,current_point):
         painter = QPainter(self.pixmap)
         p = painter.pen()
         p.setWidth(1)
@@ -428,8 +454,8 @@ class WhiteboardClient(QMainWindow):
             xo = random.gauss(0, self.brush_settings["diameter"])
             yo = random.gauss(0, self.brush_settings["diameter"])
             painter.drawPoint(
-                int(e.position().x() + xo),
-                int(e.position().y() + yo)
+                int(last_point.x() + xo),
+                int(last_point.y() + yo)
             )
 
         painter.end()
@@ -453,7 +479,9 @@ class WhiteboardClient(QMainWindow):
         dlg.exec()
 
     def brush_event_handle(self, event):
-        self.brush_settings = event
+        self.brush_settings:dict = event
+        if "color" in self.brush_settings.keys():
+            self.pen_color = self.brush_settings["color"]
 
     def open_boards_dialog(self):
         boards_dialog = BoardsDialog(self.pixmap.toImage(),self.files_client_socket,self.update_board_signal)
