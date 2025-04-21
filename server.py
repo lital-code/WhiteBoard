@@ -170,7 +170,7 @@ class WhiteboardServer:
             with open(os.path.join(dir_path, filename), 'rb') as f:  # open in readonly mode
                 # image = QImage()
                 # image.loadFromData(f.read())
-                client_socket.send(filename.encode())
+                client_socket.send(filename.encode('utf-8'))
                 client_socket.recv(1024)
                 self.send_big_data(client_socket,f.read())
 

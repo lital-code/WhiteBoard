@@ -371,9 +371,12 @@ class WhiteboardClient(QMainWindow):
         brush_type = self.brush_settings.get("mode")
         self.brush_settings.update({"dashed": Qt.PenStyle.DashLine if self.brush_settings["dashed"]=="dash" else Qt.PenStyle.SolidLine})
         self.brush_settings.update({"cap_type":Qt.PenCapStyle.SquareCap if self.brush_settings["cap_type"]=="square" else Qt.PenCapStyle.RoundCap})
+        print(self.brush_settings.get("color",""))
         self.brush_settings.update({"color":QColor(self.brush_settings["color"])})
         start_point = QPoint(x1, y1)
         end_point = QPoint(x2, y2)
+        self.pen_color = data.get("pen_color","")
+        print(self.brush_settings.get("color",""))
         if brush_type=="spray":
             self.draw_spray(start_point,end_point)
         else:
@@ -415,7 +418,7 @@ class WhiteboardClient(QMainWindow):
                 "pen_color": self.pen_color.rgb(),
                 "brush_settings":{**self.brush_settings,
                                   "dashed": "dash" if self.brush_settings["dashed"] == Qt.PenStyle.DashLine else "solid",
-                                  "cap_type": "square" if self.brush_settings["cap_type"] else "round",
+                                  "cap_type": "square" if self.brush_settings["cap_type"] == Qt.PenCapStyle.SquareCap else "round",
                                   "color":self.brush_settings["color"].rgb() if "color" in self.brush_settings.keys() else ""
                                   }
             }
