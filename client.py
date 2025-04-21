@@ -375,7 +375,7 @@ class WhiteboardClient(QMainWindow):
         self.brush_settings.update({"color":QColor(self.brush_settings["color"])})
         start_point = QPoint(x1, y1)
         end_point = QPoint(x2, y2)
-        self.pen_color = data.get("pen_color","")
+        self.pen_color = QColor(data.get("pen_color",""))
         print(self.brush_settings.get("color",""))
         if brush_type=="spray":
             self.draw_spray(start_point,end_point)

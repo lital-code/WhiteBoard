@@ -34,7 +34,7 @@ class WhiteboardServer:
         while True:
             try:
                 data = client_socket.recv(1024)
-                print(sys.getsizeof(data))
+                print(json.loads(data.decode()))
                 if data:
                     self.broadcast(data, client_socket)  # Broadcast received data
             except Exception as e:
