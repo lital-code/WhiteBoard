@@ -146,7 +146,10 @@ class WhiteboardClient(QMainWindow):
                     data = json.loads(data.decode())
                     print(f"data received from server: {data}")
                     if data.get("origin") != self.CLIENT_ID:
-                        self.new_drawing_signal.emit(data)  # Emit signal to update drawing if the origin is not me
+                        if data.get("action") == "update brush":
+                            self.update_brush_settings(**data.get("data"))
+                        elif data.get("action") == "draw":
+                            self.new_drawing_signal.emit(data)  # Emit signal to update drawing if the origin is not me
             except Exception as e:
                 print(f"Error receiving data: {e}")
 
@@ -178,6 +181,7 @@ class WhiteboardClient(QMainWindow):
         # format data before sending to server
         data = {
             "origin": self.CLIENT_ID,
+            "action":"draw",
             "last_point_x": last_point.x(),
             "last_point_y": last_point.y(),
             "current_point_x": current_point.x(),
@@ -231,7 +235,8 @@ class WhiteboardClient(QMainWindow):
                                   "cap_type": "square" if self.brush_settings["cap_type"] == Qt.PenCapStyle.SquareCap else "round",
                                   "color":self.brush_settings["color"].rgb()})
         #send formatted brush settings to the server
-        self.secondary_socket.send(json.dumps({"action":"update brush","data":brush_settings}).encode())
+        self.drawing_socket.sendto(json.dumps({"action":"update brush","origin":self.CLIENT_ID,"data":brush_settings}).encode(), (self.server_host, self.drawing_port))
+
 
 
     def draw_spray(self, last_point):
