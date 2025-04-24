@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QDialog, QGridLayout
 from Tools import pixmap_to_byte_array, send_big_data, byte_array_to_image, receive_big_data
@@ -17,16 +17,16 @@ class clickableLabel(QLabel):
         self.setProperty("active",not self.property("active"))
         if self.property("active"):
             self.setStyleSheet("""
-            QLabel{background-color:red}
+            QLabel{background-color:grey}
             QLabel:hover{
-                background-color:grey;
+                background-color:light-grey;
             }
             """)
         else:
             self.setStyleSheet("""
             QLabel{background-color:none}
             QLabel:hover{
-                background-color:grey;
+                background-color:light-grey;
             }
             """)
         self.board_clicked_sgnl.emit(self)
@@ -45,13 +45,10 @@ class BoardsDialog(QDialog):
             QLabel{
                 max-width:192px;
                 max-height:108px;
-                padding:20px;
+                padding:10px;
             }
             QLabel:hover{
-                background-color:grey;
-            }
-            QLabel[active="True"]{
-                background-color:red;
+                background-color:light-grey;
             }
             QGridLayout{
                 background-color:black;
@@ -87,12 +84,13 @@ class BoardsDialog(QDialog):
         self.setLayout(dialog_layout)
 
     def populate_boards(self):
+        MAX_COLUMNS = 3
         for index,board in enumerate(self.boards):
             label = clickableLabel()
             label.board_clicked_sgnl.connect(self.on_board_click)
             label.setPixmap(board["reduced_resolution"])
             label.setProperty("name",board["name"])
-            self.boards_layout.addWidget(label)
+            self.boards_layout.addWidget(label,int(index/MAX_COLUMNS),index%MAX_COLUMNS,Qt.AlignmentFlag.AlignCenter)
 
     def upload_board(self):
         if self.selected_board:
@@ -140,6 +138,6 @@ class BoardsDialog(QDialog):
                     item.setStyleSheet("""
                                 QLabel{background-color:none}
                                 QLabel:hover{
-                                    background-color:grey;
+                                    background-color:light-grey;
                                 }
                                 """)

@@ -18,8 +18,8 @@ def send_big_data(socket, data):
     print(f"sending big data to server file size: {data_size} data: {data}")
 
     # First send the size as a fixed-size 4-byte integer (standard method for sending data size)
-    socket.sendall(data_size.to_bytes(4, byteorder='big'))
-
+    socket.sendall(str(data_size).encode())
+    socket.recv(1024)
     # Then send the actual data
     socket.sendall(data)
 

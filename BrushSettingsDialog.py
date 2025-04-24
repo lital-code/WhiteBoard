@@ -23,7 +23,13 @@ class BrushSettingsDialog(QDialog):
         self.brush_type_group.addButton(self.lineBrush)
         self.brush_type_group.addButton(self.spray_brush)
         self.brush_type_group.addButton(self.eraser)
-        self.spray_brush.setChecked(True) if brush_settings["mode"]=="spray" else self.lineBrush.setChecked(True)
+        match brush_settings.get("mode"):
+            case "line":
+                self.lineBrush.setChecked(True)
+            case "spray":
+                self.spray_brush.setChecked(True)
+            case "eraser":
+                self.eraser.setChecked(True)
 
         self.line_brush_group = QButtonGroup(self)
         self.round_cap = QRadioButton("Round Cap")
@@ -40,7 +46,7 @@ class BrushSettingsDialog(QDialog):
         self.opacity.setValue(brush_settings["opacity"])
         self.opacity.setPageStep(10)
         self.dash = QCheckBox("dashed")
-        self.dash.setChecked(True) if brush_settings["dashed"] == Qt.PenStyle.DashLine else self.dash.setChecked(False)
+        self.dash.setChecked(True) if brush_settings.get("line_style","solid") == Qt.PenStyle.DashLine else self.dash.setChecked(False)
 
         self.spray_diameter = QSlider(Qt.Orientation.Horizontal)
         self.spray_diameter.setRange(5,50)

@@ -121,7 +121,7 @@ class WhiteboardServer:
                 # image.loadFromData(f.read())
                 client.send(filename.encode('utf-8'))
                 client.recv(1024)
-                send_big_data(socket,f.read())
+                send_big_data(client,f.read())
 
     def delete_board(self,name):
         save_dir = "Saved Boards"
