@@ -26,7 +26,7 @@ class WhiteboardClient(QMainWindow):
     #define a unique id for each client
     CLIENT_ID = str(uuid.uuid4())[:8]
 
-    def __init__(self, server_host="127.0.0.1",multicast_group = "224.1.1.1", multicast_group_port=5000,drawing_port=5001,secondary_port = 5002):
+    def __init__(self, server_host="127.0.0.1",multicast_group = "224.1.1.1", multicast_group_port=4000,drawing_port=4001,secondary_port = 4002):
         super().__init__()
 
         self.server_host = server_host

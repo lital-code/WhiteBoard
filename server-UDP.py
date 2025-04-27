@@ -12,7 +12,7 @@ from Tools import receive_big_data, byte_array_to_image, send_big_data
 
 
 class WhiteboardServer:
-    def __init__(self, server_host="127.0.0.1",multicast_group = "224.1.1.1", multicast_group_port=5000,drawing_port=5001,secondary_port = 5002):
+    def __init__(self, server_host="127.0.0.1",multicast_group = "224.1.1.1", multicast_group_port=4000,drawing_port=4001,secondary_port = 4002):
         self.clients = []
 
         self.multicast_group = multicast_group
