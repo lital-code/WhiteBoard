@@ -76,8 +76,6 @@ class WhiteboardServer:
                         self.delete_board(data["data"])
                     elif data["action"] == "disconnect":
                         break
-                    elif data.get("action") == "update brush":
-                        self.update_brush(client, data.get("data"))
             except Exception as e:
                 print(f"Error handling client {client.getpeername()}: {e}")
                 break
@@ -132,5 +130,5 @@ class WhiteboardServer:
 
 
 if __name__ == "__main__":
-    server = WhiteboardServer()
+    server = WhiteboardServer("192.168.25.82")
     server.start()

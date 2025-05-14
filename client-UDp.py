@@ -148,7 +148,9 @@ class WhiteboardClient(QMainWindow):
                     data = json.loads(data.decode())
                     print(f"data received from server: {data}")
                     if data.get("origin") != self.CLIENT_ID:
-                        self.update_drawing(data)
+                        threading.Thread(target=self.update_drawing,args=(data,), daemon=True).start()
+
+                        #self.update_drawing(data)
             except Exception as e:
                 print(f"Error receiving data: {e}")
 
@@ -305,6 +307,6 @@ class WhiteboardClient(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    client = WhiteboardClient()
+    client = WhiteboardClient("192.168.25.82")
     client.show()
     sys.exit(app.exec())
