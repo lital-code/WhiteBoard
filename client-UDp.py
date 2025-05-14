@@ -86,7 +86,6 @@ class WhiteboardClient(QMainWindow):
         self.last_point = QPoint()
 
         # Start listening for incoming data
-        self.new_drawing_signal.connect(self.update_drawing)
         self.update_board_signal.connect(self.update_current_board)
 
 
@@ -117,7 +116,7 @@ class WhiteboardClient(QMainWindow):
         self.canvas.setPixmap(self.pixmap)
 
     def update_drawing(self, data):
-        """Handle received drawing data in the main thread."""
+        """Handle received drawing data from the server into my canvas."""
 
         #get the coordinates to draw
         x1 = int(data.get("last_point_x",0))
@@ -129,12 +128,15 @@ class WhiteboardClient(QMainWindow):
         start_point = QPoint(x1, y1)
         end_point = QPoint(x2, y2)
 
+        brush_settings = data["brush_settings"]
+        self.reformat_brush_settings_to_qt(brush_settings)
+
         #draw based on the current brush mode
-        if self.brush_settings.get("mode","")=="spray":
-            self.draw_spray(start_point)
-        elif self.brush_settings.get("mode","")=="line":
-            self.draw_line(start_point, end_point)
-        elif self.brush_settings.get("mode","")=="eraser":
+        if brush_settings.get("mode","")=="spray":
+            self.draw_spray(start_point,brush_settings)
+        elif brush_settings.get("mode","")=="line":
+            self.draw_line(start_point, end_point, brush_settings)
+        elif brush_settings.get("mode","")=="eraser":
             self.draw_eraser(start_point, end_point)
 
     def receive_drawing_data(self):
@@ -146,10 +148,7 @@ class WhiteboardClient(QMainWindow):
                     data = json.loads(data.decode())
                     print(f"data received from server: {data}")
                     if data.get("origin") != self.CLIENT_ID:
-                        if data.get("action") == "update brush":
-                            self.receive_brush_settings(data.get("data"))
-                        elif data.get("action") == "draw":
-                            self.new_drawing_signal.emit(data)  # Emit signal to update drawing if the origin is not me
+                        self.update_drawing(data)
             except Exception as e:
                 print(f"Error receiving data: {e}")
 
@@ -167,9 +166,9 @@ class WhiteboardClient(QMainWindow):
 
             #draw based on the current brush mode
             if self.brush_settings.get("mode","") == "line":
-                self.draw_line(self.last_point, current_point)
+                self.draw_line(self.last_point, current_point,self.brush_settings)
             elif self.brush_settings.get("mode","") == "spray":
-                self.draw_spray(self.last_point)
+                self.draw_spray(self.last_point,self.brush_settings)
             elif self.brush_settings.get("mode","") == "eraser":
                 self.draw_eraser(self.last_point,current_point)
 
@@ -180,14 +179,22 @@ class WhiteboardClient(QMainWindow):
 
     def send_drawing_data(self, last_point, current_point):
         """formats data and sends the drawing data to the server"""
+
+        #create a copy of the current brush settings
+        brush_settings = self.brush_settings.copy()
+        #format the brush settings to strings and ints
+        brush_settings.update({"line_style": "dash" if self.brush_settings["line_style"] == Qt.PenStyle.DashLine else "solid",
+                                  "cap_type": "square" if self.brush_settings["cap_type"] == Qt.PenCapStyle.SquareCap else "round",
+                                  "color":self.brush_settings["color"].rgb()})
+
         # format data before sending to server
         data = {
             "origin": self.CLIENT_ID,
-            "action":"draw",
             "last_point_x": last_point.x(),
             "last_point_y": last_point.y(),
             "current_point_x": current_point.x(),
             "current_point_y": current_point.y(),
+            "brush_settings": brush_settings,
         }
 
         try:
@@ -227,22 +234,10 @@ class WhiteboardClient(QMainWindow):
             else:
                 print(f"Warning: '{attr}' is not a valid brush setting.")
         #send new brush settings to server
-        self.send_brush_settings()
         print(f"Updated brush settings: {self.brush_settings}")
 
-    def send_brush_settings(self):
-        """send the current brush settings to the server."""
-        #create a copy of the current brush settings
-        brush_settings = self.brush_settings.copy()
-        #format the brush settings to strings and ints
-        brush_settings.update({"line_style": "dash" if self.brush_settings["line_style"] == Qt.PenStyle.DashLine else "solid",
-                                  "cap_type": "square" if self.brush_settings["cap_type"] == Qt.PenCapStyle.SquareCap else "round",
-                                  "color":self.brush_settings["color"].rgb()})
-        #send formatted brush settings to the server
-        self.drawing_socket.sendto(json.dumps({"action":"update brush","origin":self.CLIENT_ID,"data":brush_settings}).encode(), (self.server_host, self.drawing_port))
-
-    def receive_brush_settings(self, brush_settings):
-        """receive the current brush settings from the server."""
+    def reformat_brush_settings_to_qt(self, brush_settings):
+        """reformats brush settings from str to Qt."""
         #formating the color setting from int to QColor
         brush_settings.update({"color":QColor(brush_settings.get("color",Qt.GlobalColor.black))})
         #formating the line_style setting from string to Qt.PenStyle
@@ -250,20 +245,19 @@ class WhiteboardClient(QMainWindow):
         #formating the cap_type setting from string to Qt.PenCapStyle
         brush_settings.update({"cap_type": Qt.PenCapStyle.RoundCap if brush_settings.get("cap_type",
                                                                                          "round") == "round" else Qt.PenCapStyle.SquareCap})
-        #updating the new settings
-        self.brush_settings.update(brush_settings)
 
-    def draw_spray(self, last_point):
+
+    def draw_spray(self, last_point, brush_settings):
         """draw with spray brush"""
         painter = QPainter(self.pixmap)
         p = painter.pen()
         p.setWidth(1)
-        p.setColor(self.brush_settings.get("color",QColor(Qt.GlobalColor.black)))
+        p.setColor(brush_settings.get("color",QColor(Qt.GlobalColor.black)))
         painter.setPen(p)
 
-        for n in range(self.brush_settings["density"]):
-            xo = random.gauss(0, self.brush_settings["diameter"])
-            yo = random.gauss(0, self.brush_settings["diameter"])
+        for n in range(brush_settings["density"]):
+            xo = random.gauss(0, brush_settings["diameter"])
+            yo = random.gauss(0, brush_settings["diameter"])
             painter.drawPoint(
                 int(last_point.x() + xo),
                 int(last_point.y() + yo)
@@ -272,12 +266,12 @@ class WhiteboardClient(QMainWindow):
         painter.end()
         self.canvas.setPixmap(self.pixmap)
 
-    def draw_line(self, start, end):
+    def draw_line(self, start, end, brush_settings):
         """Draw a line on the canvas."""
         painter = QPainter(self.pixmap)
-        alpha_color = self.brush_settings.get("color",QColor(Qt.GlobalColor.black))
-        alpha_color.setAlphaF(self.brush_settings["opacity"]/100)
-        pen = QPen(alpha_color, self.brush_settings.get("width"), self.brush_settings.get("line_style"), self.brush_settings.get("cap_type"), Qt.PenJoinStyle.RoundJoin)
+        alpha_color = brush_settings.get("color",QColor(Qt.GlobalColor.black))
+        alpha_color.setAlphaF(brush_settings["opacity"]/100)
+        pen = QPen(alpha_color, brush_settings.get("width"), brush_settings.get("line_style"), brush_settings.get("cap_type"), Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.drawLine(start, end)
         painter.end()
