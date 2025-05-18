@@ -307,6 +307,6 @@ class WhiteboardClient(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    client = WhiteboardClient("192.168.25.82")
+    client = WhiteboardClient("127.0.0.1")
     client.show()
     sys.exit(app.exec())

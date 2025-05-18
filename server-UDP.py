@@ -130,5 +130,5 @@ class WhiteboardServer:
 
 
 if __name__ == "__main__":
-    server = WhiteboardServer("192.168.25.82")
+    server = WhiteboardServer("127.0.0.1")
     server.start()
