@@ -14,6 +14,7 @@ import random
 
 from BoardsDialog import BoardsDialog
 from BrushSettingsDialog import BrushSettingsDialog
+from aes_cypher import encrypt, decrypt
 
 
 class WhiteboardClient(QMainWindow):
@@ -143,16 +144,13 @@ class WhiteboardClient(QMainWindow):
         """Receive drawing data from the server."""
         while True:
             try:
-                data,addr = self.drawing_socket.recvfrom(1024)
-                if data:
-                    data = json.loads(data.decode())
-                    print(f"data received from server: {data}")
-                    if data.get("origin") != self.CLIENT_ID:
-                        threading.Thread(target=self.update_drawing,args=(data,), daemon=True).start()
-
-                        #self.update_drawing(data)
+                data, addr = self.drawing_socket.recvfrom(2048)
+                decrypted_json = decrypt(data).decode()
+                data_dict = json.loads(decrypted_json)
+                if data_dict.get("origin") != self.CLIENT_ID:
+                    threading.Thread(target=self.update_drawing, args=(data_dict,), daemon=True).start()
             except Exception as e:
-                print(f"Error receiving data: {e}")
+                print(f"Error receiving or decrypting data: {e}")
 
 
     def mousePressEvent(self, event):
@@ -199,12 +197,15 @@ class WhiteboardClient(QMainWindow):
             "brush_settings": brush_settings,
         }
 
+       # enc_data = encrypt(data)
+
         try:
             # sending data to server
-            self.drawing_socket.sendto(json.dumps(data).encode(), (self.server_host, self.drawing_port))
-            print(f"sending data to server: {data}")
+            encrypted_data = encrypt(json.dumps(data).encode())
+            self.drawing_socket.sendto(encrypted_data, (self.server_host, self.drawing_port))
+            print("Encrypted data sent to server.")
         except Exception as e:
-            print(f"Error sending data: {e}")
+            print(f"Error sending encrypted data: {e}")
 
     def mouseReleaseEvent(self, event):
         """change drawing state based on mouse release."""

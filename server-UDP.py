@@ -55,7 +55,7 @@ class WhiteboardServer:
         """handle incoming drawing data and sending it to the multicast group."""
         while True:
             data,client_addr = self.drawing_socket.recvfrom(1024)
-            print(f"[Server] Received drawing data from {client_addr}: {data.decode()}")
+            print(f"[Server] Received drawing data from {client_addr}")
 
             # Multicast the drawing data to all other clients
             self.drawing_socket.sendto(data, (self.multicast_group, self.multicast_group_port))
